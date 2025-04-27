@@ -1,9 +1,10 @@
 import NextAuth from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
-import { compare, hash } from "bcrypt"
+import GithubProvider from "next-auth/providers/github"
+import { compare } from "bcrypt"
 
-// In a real app, this would be a database call
+// Mock user database - in a real app, this would be a database query
 const users = [
   {
     id: "1",
@@ -21,25 +22,6 @@ const users = [
   },
 ]
 
-// Mock user database functions
-async function getUser(email: string) {
-  return users.find((user) => user.email === email)
-}
-
-// This function is exported for use in the signup route
-async function createUser(name: string, email: string, password: string) {
-  const hashedPassword = await hash(password, 10)
-  const newUser = {
-    id: `${users.length + 1}`,
-    name,
-    email,
-    password: hashedPassword,
-    role: "user",
-  }
-  users.push(newUser)
-  return newUser
-}
-
 const handler = NextAuth({
   providers: [
     CredentialsProvider({
@@ -53,12 +35,14 @@ const handler = NextAuth({
           return null
         }
 
-        const user = await getUser(credentials.email)
+        const user = users.find((user) => user.email === credentials.email)
+
         if (!user) {
           return null
         }
 
         const isPasswordValid = await compare(credentials.password, user.password)
+
         if (!isPasswordValid) {
           return null
         }
@@ -72,34 +56,38 @@ const handler = NextAuth({
       },
     }),
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "mock-client-id",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "mock-client-secret",
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    GithubProvider({
+      clientId: process.env.GITHUB_ID || "",
+      clientSecret: process.env.GITHUB_SECRET || "",
     }),
   ],
-  pages: {
-    signIn: "/login",
-    signOut: "/",
-    error: "/login",
-  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = user.role
         token.id = user.id
+        token.role = user.role
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.role = token.role as string
         session.user.id = token.id as string
+        session.user.role = token.role as string
       }
       return session
     },
   },
+  pages: {
+    signIn: "/login",
+    error: "/login",
+  },
   session: {
     strategy: "jwt",
   },
+  secret: process.env.NEXTAUTH_SECRET,
 })
 
 export { handler as GET, handler as POST }
